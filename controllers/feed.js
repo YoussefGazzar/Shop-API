@@ -3,6 +3,7 @@ const path = require("path");
 const { validationResult } = require("express-validator");
 const Post = require("../models/post");
 const User = require("../models/user");
+const io = require("../socket");
 
 exports.getPosts = async (req, res, next) => {
   const currentPage = req.query.page || 1;
@@ -11,6 +12,7 @@ exports.getPosts = async (req, res, next) => {
     const count = await Post.find().countDocuments();
     const posts = await Post.find()
       .populate("creator", "name -_id")
+      .sort({ createdAt: -1 })
       .skip((currentPage - 1) * perPage)
       .limit(perPage);
     res.status(200).json({
@@ -58,6 +60,7 @@ exports.createPost = async (req, res, next) => {
       ...post._doc,
       creator: { name: user.name },
     };
+    io.getIO().emit("posts", { action: "create", post: newPost });
     res.status(201).json({
       message: "Post created successfully!",
       post: newPost,
@@ -129,6 +132,7 @@ exports.updatePost = async (req, res, next) => {
     post.imageUrl = imageUrl;
     const updatedPost = await post.save();
     console.log(updatedPost);
+    io.getIO().emit("posts", { action: "update", post: updatedPost });
     res.status(200).json({ message: "Post updated.", post: updatedPost });
   } catch (err) {
     if (!err.statusCode) {
@@ -157,6 +161,7 @@ exports.deletePost = async (req, res, next) => {
     const user = await User.findById(req.userId);
     user.posts.pull(postId);
     await user.save();
+    io.getIO().emit("posts", { action: "delete", postId: postId });
     res.status(200).json({ message: "Deleted post." });
   } catch (err) {
     if (!err.statusCode) {
